@@ -1,0 +1,14 @@
+policy:
+  files:
+    uspto:
+      - C:\Users\tonbl\test\test_env\aizynthfinder\aizynthfinder\interfaces\configs\uspto_model.onnx
+      - C:\Users\tonbl\test\test_env\aizynthfinder\aizynthfinder\interfaces\configs\uspto_templates.csv.gz
+    ringbreaker:
+      - C:\Users\tonbl\test\test_env\aizynthfinder\aizynthfinder\interfaces\configs\uspto_ringbreaker_model.onnx
+      - C:\Users\tonbl\test\test_env\aizynthfinder\aizynthfinder\interfaces\configs\uspto_ringbreaker_templates.csv.gz
+#filter:
+#  files:
+#    uspto: C:\Users\tonbl\test\test_env\aizynthfinder\aizynthfinder\interfaces\uspto_filter_model.onnx
+stock:
+  files:
+    zinc: C:\Users\tonbl\test\test_env\aizynthfinder\aizynthfinder\interfaces\configs\zinc_stock.hdf5

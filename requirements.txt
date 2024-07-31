@@ -1,0 +1,12 @@
+flask
+networkx
+numpy
+rdkit
+rdchiral
+scikit-learn
+pyyaml
+pandas
+requests
+onnxruntime
+psutil
+tables
