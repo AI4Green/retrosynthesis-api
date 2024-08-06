@@ -2,6 +2,8 @@ import os
 import json
 import time
 from flask import request
+
+import sources.retrosynthesis.startup
 from sources import app
 
 ACCESS_KEY = os.getenv("KEY", 'retro_key')
@@ -35,7 +37,8 @@ def retrosynthesis_process(smiles):
 	from rdkit import Chem
 	from sources.retrosynthesis.aizynthfinder.interfaces import aizynthcli
 	from sources.retrosynthesis.classes import RetroRoute
-	from sources.retrosynthesis.startup import finder
+	# from sources.retrosynthesis.startup import finder
+	finder = sources.retrosynthesis.startup.make_config()
 	mol = Chem.MolFromSmiles(smiles)
 	print(mol)
 	aizynthcli._process_single_smiles(smiles, finder, None, False, None, [])
