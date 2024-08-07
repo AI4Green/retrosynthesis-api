@@ -1,8 +1,10 @@
 import os
 from flask import request
 from sources.retrosynthesis.classes import AiZynthArgs
-from sources.retrosynthesis.aizynthfinder import aizynthfinder
-from sources.retrosynthesis.aizynthfinder.interfaces import aizynthcli
+# from sources.retrosynthesis.aizynthfinder import aizynthfinder
+# from sources.retrosynthesis.aizynthfinder.interfaces import aizynthcli
+from aizynthfinder import aizynthfinder
+from aizynthfinder.interfaces import aizynthcli
 
 
 def make_config():
@@ -13,19 +15,28 @@ def make_config():
    stock_file_dict = {'emolecules': 'emolecules.hdf5',
                        'zinc': 'zinc_stock_17_04_20.hdf5'}
 
-   chosen_stock_file = stock_file_dict.get(stock_request)
+   chosen_stock_file = stock_file_dict.get(stock_request, 'bloom')
 
    AIZYNTH = {
-      'policy': {
-         'files': {
-            'uspto': [os.path.join(BASEDIR, 'config_files', 'uspto_model.onnx'),
-                      os.path.join(BASEDIR, 'config_files', 'uspto_templates.csv.gz')]}},
-      'stock': {
-         'files': {
-            # 'zinc': os.path.join(BASEDIR, 'config_files', 'zinc_stock_17_04_20.hdf5'),
-            'stock_file': os.path.join(BASEDIR, 'config_files', chosen_stock_file)
+      'expansion': {
+         'full': {
+            'type': 'template-based',
+            'model': os.path.join(BASEDIR, 'config_files', 'uspto_model.onnx'),
+            'template': os.path.join(BASEDIR, 'config_files', 'uspto_templates.csv.gz')
          }
       },
+
+
+         # 'files': {
+         #    'uspto': [os.path.join(BASEDIR, 'config_files', 'uspto_model.onnx'),
+         #              os.path.join(BASEDIR, 'config_files', 'uspto_templates.csv.gz')]}},
+      'stock': {'bloom': os.path.join(BASEDIR, 'config_files', 'emol.bloom')}
+         # 'files': {
+         #    # 'zinc': os.path.join(BASEDIR, 'config_files', 'zinc_stock_17_04_20.hdf5'),
+         #    # 'stock': os.path.join(BASEDIR, 'config_files', chosen_stock_file)
+         #
+         # }
+      ,
       'config_file': os.path.join(BASEDIR, 'config_files', 'aizynthfinder_config.yml'),
       'properties': {
          'max_transforms': 10,
@@ -39,7 +50,7 @@ def make_config():
    aizynth_config_dic = AIZYNTH
    print(2)
    # initiate object containing all required arguments
-   args = AiZynthArgs("placeholder",  aizynth_config_dic['policy'],
+   args = AiZynthArgs("placeholder",  aizynth_config_dic['expansion'],
                       aizynth_config_dic['stock'])
    print(3)
    # AiZynthFinder object contains results data

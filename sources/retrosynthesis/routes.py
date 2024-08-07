@@ -35,13 +35,13 @@ def retrosynthesis_process(smiles):
 	# load config containing policy file locations
 	print(smiles)
 	from rdkit import Chem
-	from sources.retrosynthesis.aizynthfinder.interfaces import aizynthcli
+	from aizynthfinder.interfaces import aizynthcli
 	from sources.retrosynthesis.classes import RetroRoute
 	# from sources.retrosynthesis.startup import finder
 	finder = sources.retrosynthesis.startup.make_config()
 	mol = Chem.MolFromSmiles(smiles)
 	print(mol)
-	aizynthcli._process_single_smiles(smiles, finder, None, False, None, [])
+	aizynthcli._process_single_smiles(smiles, finder, None, False, None, [], None)
 	# Find solved routes and process routes objects into list of dictionaries
 	routes = finder.routes
 	solved_routes = []
