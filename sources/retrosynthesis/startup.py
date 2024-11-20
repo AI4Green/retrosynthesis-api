@@ -13,7 +13,7 @@ def make_config():
     stock_file_dict = {'emolecules': 'emolecules.hdf5',
                        'zinc': 'zinc_stock_17_04_20.hdf5'}
 
-    chosen_stock_file = stock_file_dict.get(stock_request, 'bloom')
+    chosen_stock_file = stock_file_dict.get(stock_request)
 
     AIZYNTH = {
         'expansion': {
@@ -27,12 +27,27 @@ def make_config():
         'stock': {'bloom': os.path.join(BASEDIR, 'config_files', 'zinc_and_emol_inchi_key.bloom')}
         ,
         'config_file': os.path.join(BASEDIR, 'config_files', 'aizynthfinder_config.yml'),
-        'properties': {
+        'search': {
             'max_transforms': 10,
             'time_limit': 3600,
             'iteration_limit': 500,
+            # 'excluded_stock': {'CCCc1nn(C)c2c(=O)[nH]c(-c3cc(S(=O)(=O)Cl)ccc3OCC)nc12',
+            #                    'CCCc1nn(C)c(C(N)=O)c1NC(=O)c1cc(S(=O)(=O)N2CCN(C)CC2)ccc1OCC',
+            #                    'CCCc1nn(C)c2c(=O)[nH]c(-c3cc(S(=O)(=O)N4CCN(C)CC4)ccc3O)nc12',
+            #                    'CCCc1nn(C)c2c(=O)[nH]c(-c3cc(S(=O)(=O)O)ccc3OCC)nc12',
+            #                    'CCCOc1ccc(S(=O)(=O)N2CCN(C)CC2)cc1-c1nc2c(CCC)nn(C)c2c(=O)[nH]1',
+            #                    'CCCc1nn(C)c2c(=O)[nH]c(-c3cc(S(=O)(=O)Cl)ccc3OCC)nc12',
+            #                    'CCOc1ccc(S(=O)(=O)N2CCN(C)CC2)cc1C=O',
+            #                    'CCCc1nn(C)c(C(N)=O)c1NC(=O)c1cc(S(=O)(=O)N2CCN(C)CC2)ccc1OCC',
+            #                    'CCOc1ccc(S(=O)(=O)N2CCN(C)CC2)cc1C(=O)O'
+            #                    'CCOc1ccc(S(=O)(=O)N2CCN(C)CC2)cc1C#N'
+            #                    'CCOc1ccc(S(=O)(=O)N2CCN(C)CC2)cc1C(=O)O'
+            #                    # 'CCOc1ccc(S(=O)(=O)N2CCN(C)CC2)cc1C#N'
+            #                    },
+
         }
     }
+
 
     print("1")
     print(AIZYNTH)
@@ -40,7 +55,7 @@ def make_config():
     print(2)
     # initiate object containing all required arguments
     args = AiZynthArgs("placeholder",  aizynth_config_dic['expansion'],
-                       aizynth_config_dic['stock'])
+                      aizynth_config_dic['stock'])
     print(3)
     # AiZynthFinder object contains results data
     finder = aizynthfinder.AiZynthFinder(configdict=aizynth_config_dic)

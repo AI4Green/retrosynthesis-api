@@ -170,6 +170,11 @@ class AiZynthFinder:
             self.stock.exclude(self.target_mol)
             self._logger.debug("Excluding the target compound from the stock")
 
+        if self.config.search.excluded_stock:
+            for smiles in self.config.search.excluded_stock:
+                self.stock.exclude(Molecule(smiles=smiles))
+            self._logger.debug("Excluded specified molecules from the stock")
+
         if self.config.search.break_bonds or self.config.search.freeze_bonds:
             self._setup_focussed_bonds(self.target_mol)
 

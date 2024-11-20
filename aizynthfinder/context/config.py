@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Set
 
 import yaml
 
@@ -51,6 +51,7 @@ class _SearchConfiguration:
     break_bonds: List[List[int]] = field(default_factory=list)
     freeze_bonds: List[List[int]] = field(default_factory=list)
     break_bonds_operator: str = "and"
+    excluded_stock: Set[str] = field(default_factory=set)
 
 
 @dataclass
@@ -68,6 +69,8 @@ class Configuration:
     expansion_policy: ExpansionPolicy = field(init=False)
     filter_policy: FilterPolicy = field(init=False)
     scorers: ScorerCollection = field(init=False)
+    excluded_stock: Set[str] = field(default_factory=set)
+
 
     def __post_init__(self) -> None:
         self.stock = Stock()
