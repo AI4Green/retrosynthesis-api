@@ -41,9 +41,11 @@ class _SearchConfiguration:
             "immediate_instantiation": (),
             "mcts_grouping": None,
             "search_rewards_weights": [],
+            "enhancement": "Default",
+            "current_iteration": 0,
         }
     )
-    max_transforms: int = 6
+    max_transforms: int = 10
     iteration_limit: int = 100
     time_limit: int = 120
     return_first: bool = False
