@@ -265,8 +265,8 @@ class MctsNode:
             self._fill_children_lists(actions, priors)
         elif enhancement == "eUCT":
             self._fill_children_lists(actions, priors)
+            print('through here')
         elif enhancement == "dUCT-v1" or "dUCT-v2":
-            print("in wrong place")
             if enhancement == "dUCT-v1":
                 n = 20
             elif enhancement == "dUCT-v2":
