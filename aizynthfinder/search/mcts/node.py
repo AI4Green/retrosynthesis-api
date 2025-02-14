@@ -70,6 +70,7 @@ class MctsNode:
         self.is_expanded: bool = False
         self.is_expandable: bool = not self.state.is_terminal
         self._parent = parent
+        self.depth = 0
 
         if owner is None:
             self.created_at_iteration: Optional[int] = None
@@ -249,13 +250,34 @@ class MctsNode:
             for child in self.parent.children:
                 if child is not self:
                     cache_molecules.extend(child.state.expandable_mols)
-
+        if self.parent:
+            self.depth = self.parent.depth + 1
+        if not self.parent:
+            self.depth = 0
         # Calculate the possible actions, fill the child_info lists
         # Actions by default only assumes 1 set of reactants
         actions, priors = self._expansion_policy(
             self.state.expandable_mols, cache_molecules
         )
-        self._fill_children_lists(actions, priors)
+        enhancement = self._config.search.algorithm_config["enhancement"]
+        n = 0
+        if enhancement == "Default":
+            self._fill_children_lists(actions, priors)
+        elif enhancement == "eUCT":
+            self._fill_children_lists(actions, priors)
+            print('through here')
+        elif enhancement == "dUCT-v1" or "dUCT-v2":
+            if enhancement == "dUCT-v1":
+                n = 20
+            elif enhancement == "dUCT-v2":
+                n = 50
+            action_prior_pairs = list(zip(actions, priors))
+            sorted_action_prior_pairs = sorted(action_prior_pairs, key=lambda x: x[1], reverse=True)
+            top_n_action_prior_pairs = sorted_action_prior_pairs[:n]
+            actions[:], priors[:] = zip(*top_n_action_prior_pairs)
+            actions = list(actions)
+            priors = list(priors)
+            self._fill_children_lists(actions, priors)
 
         # Reverse the expansion if it did not produce any children
         if len(actions) == 0:
@@ -376,6 +398,23 @@ class MctsNode:
         total_visits = np.log(np.sum(self._children_visitations))
         child_visits = np.array(self._children_visitations)
         return self._algo_config["C"] * np.sqrt(2 * total_visits / child_visits)
+
+    def _children_du(self, depth) -> np.ndarray:
+        total_visits = np.log(np.sum(self._children_visitations))
+        child_visits = np.array(self._children_visitations)
+        dc = self._algo_config["C"] + 0.5 * depth
+        return dc * np.sqrt(2 * total_visits / child_visits)
+
+    def _children_eu(self) -> np.ndarray:
+        total_visits = np.log(np.sum(self._children_visitations))
+        child_visits = np.array(self._children_visitations)
+        current_iteration = self._algo_config["current_iteration"]
+        if current_iteration == 0:
+            phi = (1 / self._config.search.iteration_limit)/2
+        else:
+            phi = (current_iteration/self._config.search.iteration_limit)/2
+        lamda = (self._algo_config["C"]/(phi+1))
+        return lamda * np.sqrt(2 * total_visits / child_visits)
 
     def _create_children_nodes(
         self, states: List[MctsState], child_idx: int
@@ -536,7 +575,13 @@ class MctsNode:
     def _score_and_select(self) -> Optional["MctsNode"]:
         if not max(self._children_values) > 0:
             raise ValueError("Has no selectable children")
-        scores = self._children_q() + self._children_u()
+
+        if self._algo_config["enhancement"] == "dUCT-v1" or "dUCT-v2":
+            scores = self._children_q() + self._children_du(self.depth)
+        elif self._algo_config["enhancement"] == "eUCT":
+            scores = self._children_q() + self._children_eu()
+        elif self._algo_config["enhancement"] == "Default":
+            scores = self._children_q() + self._children_u()
         indices = np.where(scores == scores.max())[0]
         index = np.random.choice(indices)
         return self._select_child(index)
