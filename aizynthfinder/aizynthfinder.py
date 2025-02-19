@@ -228,6 +228,7 @@ class AiZynthFinder:
 
             try:
                 is_solved = self.tree.one_iteration()
+                self.config.search.algorithm_config["current_iteration"] += 1
             except StopIteration:
                 break
 
