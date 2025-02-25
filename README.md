@@ -15,4 +15,4 @@ Includes a docker file.
 
 The docker image can be found at: https://hub.docker.com/repository/docker/ai4greeneln/retrosynthesis/general
 
-Supplementary information from our retrosynthesis experiments can be found here: https://doi.org/10.6084/m9.figshare.28450787.v1
+Supplementary information from our retrosynthesis experiments can be found here: https://doi.org/10.6084/m9.figshare.28485221.v2
