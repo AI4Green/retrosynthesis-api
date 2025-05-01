@@ -29,13 +29,9 @@ def retrosynthesis():
 	finder = sources.retrosynthesis.startup.make_config()
 	finder.config.search.algorithm_config["enhancement"] = enhancement
 	finder.config.search.iteration_limit = int(request.args.get('iterations'))
-	print('iterations is:', finder.config.search.iteration_limit)
 	finder.config.search.max_transforms = int(request.args.get('max_depth'))
-	print('transforms is:', finder.config.search.max_transforms)
 	finder.config.search.time_limit = int(request.args.get('time_limit'))
-	print('time limit is:', finder.config.search.time_limit)
 	solved_route_dict_ls, raw_routes = retrosynthesis_process(smiles, finder)
-	print(len(solved_route_dict_ls))
 	page_data = {'Message': solved_route_dict_ls, 'Raw_Routes': raw_routes, 'Timestamp': time.time()}
 
 	json_dump = json.dumps(page_data)

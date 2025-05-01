@@ -29,7 +29,7 @@ def make_config():
         ,
         'config_file': os.path.join(BASEDIR, 'config_files', 'aizynthfinder_config.yml'),
         'properties': {
-            'max_transforms': 1,
+            'max_transforms': 10,
             'time_limit': 3600,
             'iteration_limit': 500,
         }

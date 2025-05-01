@@ -576,12 +576,10 @@ class MctsNode:
             raise ValueError("Has no selectable children")
 
         if self._algo_config["enhancement"] == "dUCT-v1" or self._algo_config["enhancement"] == "dUCT-v2":
-            #print('in duct')
             scores = self._children_q() + self._children_du(self.depth)
         elif self._algo_config["enhancement"] == "eUCT":
             scores = self._children_q() + self._children_eu()
         elif self._algo_config["enhancement"] == "Default":
-            #print('in default')
             scores = self._children_q() + self._children_u()
         indices = np.where(scores == scores.max())[0]
         index = np.random.choice(indices)
