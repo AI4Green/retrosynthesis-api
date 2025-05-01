@@ -24,11 +24,12 @@ def make_config():
             }
         },
 
+        #'stock': {'zinc': os.path.join(BASEDIR, 'config_files', 'zinc_stock_17_04_20.hdf5')}
         'stock': {'bloom': os.path.join(BASEDIR, 'config_files', 'zinc_and_emol_inchi_key.bloom')}
         ,
         'config_file': os.path.join(BASEDIR, 'config_files', 'aizynthfinder_config.yml'),
         'properties': {
-            'max_transforms': 10,
+            'max_transforms': 1,
             'time_limit': 3600,
             'iteration_limit': 500,
         }

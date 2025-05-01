@@ -6,7 +6,7 @@ import random
 from typing import TYPE_CHECKING
 
 import numpy as np
-#from paretoset import paretoset
+
 
 from aizynthfinder.chem import TreeMolecule, deserialize_action, serialize_action
 from aizynthfinder.search.mcts.state import MctsState
@@ -265,8 +265,7 @@ class MctsNode:
             self._fill_children_lists(actions, priors)
         elif enhancement == "eUCT":
             self._fill_children_lists(actions, priors)
-            print('through here')
-        elif enhancement == "dUCT-v1" or "dUCT-v2":
+        elif enhancement == "dUCT-v1" or enhancement == "dUCT-v2":
             if enhancement == "dUCT-v1":
                 n = 20
             elif enhancement == "dUCT-v2":
@@ -576,11 +575,13 @@ class MctsNode:
         if not max(self._children_values) > 0:
             raise ValueError("Has no selectable children")
 
-        if self._algo_config["enhancement"] == "dUCT-v1" or "dUCT-v2":
+        if self._algo_config["enhancement"] == "dUCT-v1" or self._algo_config["enhancement"] == "dUCT-v2":
+            #print('in duct')
             scores = self._children_q() + self._children_du(self.depth)
         elif self._algo_config["enhancement"] == "eUCT":
             scores = self._children_q() + self._children_eu()
         elif self._algo_config["enhancement"] == "Default":
+            #print('in default')
             scores = self._children_q() + self._children_u()
         indices = np.where(scores == scores.max())[0]
         index = np.random.choice(indices)
