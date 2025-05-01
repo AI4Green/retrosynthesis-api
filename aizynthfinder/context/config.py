@@ -45,9 +45,9 @@ class _SearchConfiguration:
             "current_iteration": 0,
         }
     )
-    max_transforms: int = 10
+    max_transforms: int = 12
     iteration_limit: int = 100
-    time_limit: int = 120
+    time_limit: int = 60
     return_first: bool = False
     exclude_target_from_stock: bool = True
     break_bonds: List[List[int]] = field(default_factory=list)
