@@ -242,7 +242,6 @@ class AiZynthFinder:
                 break
             i = i + 1
             time_past = time.time() - time0
-
         if show_progress:
             pbar.close()
         time_past = time.time() - time0

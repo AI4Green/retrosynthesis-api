@@ -35,7 +35,7 @@ class _SearchConfiguration:
         default_factory=lambda: {
             "C": 1.4,
             "default_prior": 0.5,
-            "use_prior": True,
+            "use_prior": False,
             "prune_cycles_in_search": True,
             "search_rewards": ["state score"],
             "immediate_instantiation": (),
@@ -45,9 +45,9 @@ class _SearchConfiguration:
             "current_iteration": 0,
         }
     )
-    max_transforms: int = 10
+    max_transforms: int = 12
     iteration_limit: int = 100
-    time_limit: int = 120
+    time_limit: int = 60
     return_first: bool = False
     exclude_target_from_stock: bool = True
     break_bonds: List[List[int]] = field(default_factory=list)

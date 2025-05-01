@@ -1,4 +1,4 @@
-molbloom
+molbloom==2.2.1
 flask
 networkx
 numpy
