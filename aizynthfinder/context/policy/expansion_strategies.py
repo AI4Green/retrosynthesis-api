@@ -14,6 +14,8 @@ from aizynthfinder.context.policy.utils import _make_fingerprint
 from aizynthfinder.utils.exceptions import PolicyException
 from aizynthfinder.utils.logging import logger
 from aizynthfinder.utils.models import load_model
+from aizynthfinder.context.policy.post_sm_grouping import compute_center_group_key
+
 
 if TYPE_CHECKING:
     from aizynthfinder.chem import TreeMolecule
@@ -58,6 +60,7 @@ class ExpansionStrategy(abc.ABC):
         self._config = config
         self._logger = logger()
         self.key = key
+
 
     def __call__(
         self,
@@ -304,12 +307,20 @@ class TemplateBasedExpansionStrategy(ExpansionStrategy):
             self._load_mask_file(maskfile) if maskfile else None
         )
 
-        if hasattr(self.model, "output_size") and len(self.templates) != self.model.output_size:  # type: ignore
+        if hasattr(self.model, "output_size") and len(self.templates) != self.model.output_size:
             raise PolicyException(
-                f"The number of templates ({len(self.templates)}) does not agree with the "  # type: ignore
+                f"The number of templates ({len(self.templates)}) does not agree with the "  
                 f"output dimensions of the model ({self.model.output_size})"
             )
         self._cache: Dict[str, Tuple[np.ndarray, np.ndarray]] = {}
+        self._cutoff_impl_name: str = str(kwargs.get("cutoff_impl", "templates")).lower()
+        self._cutoff_impl = getattr(self, f"_cutoff_predictions_{self._cutoff_impl_name}", None)
+        if self._cutoff_impl is None:
+            raise PolicyException(f"Unknown cutoff_impl='{self._cutoff_impl_name}'. Use 'templates' or 'groups'.")
+
+        self._group_index = None
+        if self._cutoff_impl_name == "groups":
+            self._build_group_index()
 
     def get_actions(
         self,
@@ -358,31 +369,284 @@ class TemplateBasedExpansionStrategy(ExpansionStrategy):
         """Reset the prediction cache"""
         self._cache = {}
 
+    def _build_group_index(self) -> None:
+        """
+        Build a mapping: group_key -> list of row positions of N templates.
+        Uses the template SMARTS to compute a product-side reacting-center + first shell signature.
+        """
+        df = self.templates
+
+        if self.template_column in df.columns:
+            smarts_col = self.template_column
+        else:
+            smarts_col = None
+            for c in ("retro_template", "template", "smarts", "reaction_smarts"):
+                if c in df.columns:
+                    smarts_col = c
+                    break
+            if smarts_col is None:
+                self._logger.info("Grouping: no SMARTS column found; skipping")
+                self._group_index = None
+                return
+
+        print(f"[DEBUG groups] computing group keys for {len(df)} templates "
+              f"using column '{smarts_col}'")
+        if "group_key" not in df.columns:
+            print("[DEBUG groups] no existing group_key column; computing…")
+            df["group_key"] = df[smarts_col].fillna("").map(compute_center_group_key)
+
+        from collections import defaultdict
+        gi = defaultdict(list)
+        for pos, g in enumerate(df["group_key"].values):
+            gi[g].append(pos)
+        self._group_index = gi
+
+        ng = len(gi)
+        avg = len(df) / max(ng, 1)
+        print(f"[DEBUG groups] built {ng} groups over {len(df)} templates "
+              f"(avg {avg:.2f}/group)")
+
+        sizes = sorted(((k, len(v)) for k, v in gi.items()), key=lambda x: x[1], reverse=True)[:10]
+        if sizes:
+            show = ", ".join([f"{k[:10]}…:{n}" if isinstance(k, str) else f"{str(k)[:10]}…:{n}" for k, n in sizes])
+            print(f"[DEBUG groups] largest groups (key:count): {show}")
+
+
+    def _dbg_row_info(self, pos: int) -> str:
+        """Build a short string with template identity for position `pos`."""
+        df = self.templates
+        try:
+            label = df.index.values[pos]
+        except Exception:
+            label = pos
+        get = lambda col: (str(df.iloc[pos][col]) if col in df.columns else "")
+        thash = get("template_hash")
+        gkey  = get("group_key")
+        # abbreviate long hashes
+        if isinstance(thash, str) and len(thash) > 10:
+            thash = thash[:10] + "…"
+        if isinstance(gkey, str) and len(gkey) > 10:
+            gkey = gkey[:10] + "…"
+        return f"pos={pos} label={label} hash={thash} group={gkey}"
+
+    def _dbg_dump_selection(self, preds: np.ndarray, selected: np.ndarray, tag: str) -> None:
+        """Print the final selected templates (bounded)."""
+        if selected is None or len(selected) == 0:
+            print(f"[DEBUG cutoff:{tag}] no templates selected")
+            return
+        topn = min(25, len(selected))
+        total = float(np.nansum(preds))
+        cum = float(np.nansum(preds[selected]))
+        print(f"[DEBUG cutoff:{tag}] selected {len(selected)} templates "
+              f"(mass {cum:.6g} of {total:.6g}); showing top {topn}")
+        # order by prob descending
+        order = np.argsort(preds[selected])[::-1]
+        for rank, rel in enumerate(order[:topn], start=1):
+            pos = int(selected[rel])
+            p = float(preds[pos])
+            print(f"  #{rank:>2}  p={p:.6g}  {self._dbg_row_info(pos)}")
+
     def _cutoff_predictions(self, predictions: np.ndarray) -> np.ndarray:
+        """
+        Select up to TOTAL_TARGET templates:
+          If GROUPING:
+            1) Rank groups by total probability; keep top NUM_GROUPS groups.
+            2) From each kept group, take PER_GROUP templates
+            3) Top up to TOTAL_TARGET with global best
+          Else:
+            Take global top TOTAL_TARGET templates.
+        """
+
+        # ----------------------------------
+        GROUPING = True
+        NUM_GROUPS = 20
+        PER_GROUP = 5
+        TOTAL_TARGET = 100
+        FILL_FROM_GLOBAL = True
+        # ----------------------------------
+
+        preds = predictions.copy().astype(float)
+
+        if getattr(self, "mask", None) is not None:
+            preds[~self.mask] = 0.0
+
+        all_idx = np.arange(preds.size, dtype=np.int32)
+        global_order = all_idx[np.argsort(preds)[::-1]]
+        if not GROUPING:
+            return global_order[: min(TOTAL_TARGET, global_order.size)]
+        if getattr(self, "_group_index", None) is None:
+            self._build_group_index()
+        gi = getattr(self, "_group_index", None)
+
+        if not gi or NUM_GROUPS <= 0 or PER_GROUP <= 0:
+            return global_order[: min(TOTAL_TARGET, global_order.size)]
+
+        group_items = list(gi.items())
+        group_sums = np.array(
+            [float(preds[np.asarray(members, dtype=np.int32)].sum()) for _, members in group_items],
+            dtype=float,
+        )
+
+        # Order groups by total mass
+        g_order = np.argsort(group_sums)[::-1]
+
+        selected: list[int] = []
+
+        # Take top NUM_GROUPS groups
+        for g_pos in g_order[: min(NUM_GROUPS, len(g_order))]:
+            _, members = group_items[g_pos]
+            members = np.asarray(members, dtype=np.int32)
+            if members.size == 0:
+                continue
+
+            # Top PER_GROUP within this group
+            local_sorted = members[np.argsort(preds[members])[::-1]]
+            take_k = int(min(PER_GROUP, local_sorted.size))
+
+            count = 0
+            for idx in local_sorted:
+                if count >= take_k:
+                    break
+                if preds[idx] > 0.0:
+                    selected.append(int(idx))
+                    count += 1
+
+            if len(selected) >= TOTAL_TARGET:
+                break
+
+        # Top up from global templates if needed
+        if FILL_FROM_GLOBAL and len(selected) < TOTAL_TARGET:
+            chosen = set(selected)
+            for idx in global_order:
+                if len(selected) >= TOTAL_TARGET:
+                    break
+                if idx not in chosen and preds[idx] > 0.0:
+                    selected.append(int(idx))
+
+        if not selected:
+            return global_order[: min(TOTAL_TARGET, global_order.size)]
+        if len(selected) > TOTAL_TARGET:
+            selected = selected[:TOTAL_TARGET]
+
+        return np.asarray(selected, dtype=np.int32)
+
+    def _cutoff_predictions_templates(self, predictions: np.ndarray) -> np.ndarray:
         """
         Get the top transformations, by selecting those that have:
             * cumulative probability less than a threshold (cutoff_cumulative)
             * or at most N (cutoff_number)
         """
+        # # DEBUG
+        # TARGET_HASH = "0c33fbaaea663fe5aa40102c16fffe484773b331031394dbfad9e1eace47a3c2"
+        #
+        # df = None
+        # if hasattr(self, "templates"):
+        #     df = self.templates
+        # elif hasattr(self, "_template_library") and hasattr(self._template_library, "data"):
+        #     df = self._template_library.data
+        #
+        # if df is not None:
+        #     row = df.loc[df["template_hash"] == TARGET_HASH]
+        #     if len(row) == 1:
+        #         try:
+        #             iloc = int(df.index.get_indexer([row.index[0]])[0])
+        #         except Exception:
+        #             code = int(row["template_code"].iloc[0])
+        #             iloc = int(df.index.get_indexer([code])[0])
+        #         p = float(predictions[iloc])
+        #         rank = int((predictions > p).sum() + 1)
+        #         pct = 100.0 * rank / predictions.size
+        #         masked = (getattr(self, "mask", None) is not None and not self.mask[iloc])
+        #         print(f"[POLICY] prob={p:.6g} rank={rank}/{predictions.size} (top {pct:.4f}%)"
+        #               + (" [MASKED]" if masked else ""))
+        # # END
+
+        preds = predictions.copy()
         if self.mask is not None:
-            predictions[~self.mask] = 0
-        sortidx = np.argsort(predictions)[::-1]
-        cumsum: np.ndarray = np.cumsum(predictions[sortidx])
+            preds[~self.mask] = 0
+
+        sortidx = np.argsort(preds)[::-1]
+        cumsum: np.ndarray = np.cumsum(preds[sortidx])
+
         if any(cumsum >= self.cutoff_cumulative):
             maxidx = int(np.argmin(cumsum < self.cutoff_cumulative))
         else:
             maxidx = len(cumsum)
-        maxidx = min(maxidx, self.cutoff_number) or 1
-        return sortidx[:maxidx]
 
-    def _load_mask_file(self, maskfile: str) -> np.ndarray:
-        self._logger.info(f"Loading masking of templates from {maskfile} to {self.key}")
-        mask = np.load(maskfile)["arr_0"]
-        if len(mask) != len(self.templates):
-            raise PolicyException(
-                f"The number of masks {len(mask)} does not match the number of templates {len(self.templates)}"
-            )
-        return mask
+        maxidx = min(maxidx, self.cutoff_number) or 1
+
+        selected = sortidx[:maxidx]
+        try:
+            self._dbg_dump_selection(preds, selected, tag="templates")
+        except Exception as _e:
+            print(f"[DEBUG cutoff:templates] printing failed: {_e}")
+        return selected
+
+    def _cutoff_predictions_groups(self, predictions: np.ndarray) -> np.ndarray:
+        """
+        Group-level cutoff:
+          1) Sum probabilities per group.
+          2) Select top groups by cumulative probability and cutoff_number (applied to groups).
+          3) Return template indices from selected groups, sorted by their individual prob,
+             then truncate to self.cutoff_number templates.
+        """
+
+        if getattr(self, "_group_index", None) is None:
+            self._build_group_index()
+
+        preds = predictions.copy()
+        if self.mask is not None:
+            preds[~self.mask] = 0
+
+        gi = getattr(self, "_group_index", None)
+        if not gi:
+            print("[DEBUG cutoff:groups] no group index; falling back to template cutoff")
+            return self._cutoff_predictions_templates(preds)
+
+        group_keys = list(gi.keys())
+        group_members = [gi[k] for k in group_keys]
+        group_sums = np.array([float(preds[m].sum()) for m in group_members], dtype=float)
+
+        g_order = np.argsort(group_sums)[::-1]
+        g_cumsum = np.cumsum(group_sums[g_order])
+
+        if any(g_cumsum >= self.cutoff_cumulative):
+            gmax = int(np.argmin(g_cumsum < self.cutoff_cumulative))
+        else:
+            gmax = len(g_order)
+
+        gmax = min(gmax, self.cutoff_number) or 1
+
+        print(f"[DEBUG cutoff:groups] considering {len(group_keys)} groups; "
+              f"selecting top {gmax} by group mass (cum ≤ {self.cutoff_cumulative})")
+        show_g = min(10, len(g_order))
+        for rank, gi_pos in enumerate(g_order[:show_g], start=1):
+            key = group_keys[gi_pos]
+            members = group_members[gi_pos]
+            mass = float(group_sums[gi_pos])
+            print(f"  [group #{rank:>2}] mass={mass:.6g}  key={str(key)[:10]}…  |members|={len(members)}")
+
+        kept_indices = []
+        for i in g_order[:gmax]:
+            kept_indices.extend(group_members[i])
+
+        if not kept_indices:
+            print("[DEBUG cutoff:groups] kept_indices empty; falling back to template cutoff")
+            return self._cutoff_predictions_templates(preds)
+
+        kept_indices = np.array(kept_indices, dtype=np.int32)
+        order = np.argsort(preds[kept_indices])[::-1]
+        out = kept_indices[order]
+
+        if len(out) > self.cutoff_number:
+            out = out[: self.cutoff_number]
+
+        try:
+            self._dbg_dump_selection(preds, out, tag="groups")
+        except Exception as _e:
+            print(f"[DEBUG cutoff:groups] printing failed: {_e}")
+
+        return out
 
     def _update_cache(self, molecules: Sequence[TreeMolecule]) -> None:
         pred_inchis = []
