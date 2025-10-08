@@ -2,4 +2,18 @@
 name = "retrosynthesis-api"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "flask>=3.1.2",
+    "molbloom<3.0.0",
+    "networkx>=3.5",
+    "numpy>=2.3.3",
+    "onnxruntime>=1.23.1",
+    "pandas>=2.3.3",
+    "psutil>=7.1.0",
+    "pyyaml>=6.0.3",
+    "rdchiral>=1.1.0",
+    "rdkit>=2025.9.1",
+    "requests>=2.32.5",
+    "scikit-learn>=1.7.2",
+    "tables>=3.10.2",
+]
