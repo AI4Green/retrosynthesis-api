@@ -6,7 +6,9 @@ from flask import request
 import sources.retrosynthesis.startup
 from sources import app
 
-ACCESS_KEY = os.getenv("KEY", 'retro_key')
+# ACCESS_KEYS can be a comma-separated string of keys per client
+# e.g. client1-key,client2-key
+ACCESS_KEYS = os.getenv("KEYS", 'retro_key').split(",")
 
 @app.route('/', methods=['GET'])
 def service_check():
@@ -20,7 +22,7 @@ def service_check():
 @app.route('/retrosynthesis_api/', methods=['GET'])
 def retrosynthesis():
 	access_key = str(request.args.get('key'))
-	if access_key != ACCESS_KEY:
+	if access_key not in ACCESS_KEYS:
 		print("Invalid key")
 		return json.dumps({'Message': 'Invalid key', 'Timestamp': time.time()})
 
