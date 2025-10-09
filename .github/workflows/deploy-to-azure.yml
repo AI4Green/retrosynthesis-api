@@ -33,7 +33,7 @@ jobs:
       - name: Restart container app with new image
         run: |
           az containerapp update \
-            --name ai4greenretrosynthesis \
+            --name ai4greenretrosynthesisuat \
             --resource-group ${{ secrets.AZURE_RESOURCE_ID }} \
             --image ai4greeneln/retrosynthesis:latest \
             --revision-suffix $GITHUB_RUN_NUMBER
@@ -54,7 +54,7 @@ jobs:
       - name: Restart container app with new image
         run: |
           az containerapp update \
-            --name ai4greenretrosynthesis \
+            --name ai4greenretrosynthesisprod \
             --resource-group ${{ secrets.AZURE_RESOURCE_ID }} \
             --image ai4greeneln/retrosynthesis:latest \
             --revision-suffix $GITHUB_RUN_NUMBER
