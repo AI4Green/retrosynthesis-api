@@ -36,19 +36,18 @@ def retrosynthesis():
     # Get job parameters
     smiles = str(request.args.get("smiles"))
     enhancement = str(request.args.get("enhancement", "Default"))
-
-    finder = sources.retrosynthesis.startup.make_config()
-    finder.config.search.algorithm_config["enhancement"] = enhancement
-    finder.config.search.iteration_limit = int(request.args.get("iterations"))
-    finder.config.search.max_transforms = int(request.args.get("max_depth"))
-    finder.config.search.time_limit = int(request.args.get("time_limit"))
+    iteration_limit = int(request.args.get("iterations"))
+    max_transforms = int(request.args.get("max_depth"))
+    time_limit = int(request.args.get("time_limit"))
 
     # Create unique job ID
     job_id = str(uuid.uuid4())
 
     # Queue the analysis
     current_app.logger.info(f"Queueing job {job_id}")
-    queue.put((job_id, smiles, finder))
+    queue.put(
+        (job_id, smiles, enhancement, iteration_limit, max_transforms, time_limit)
+    )
 
     return jsonify({"job_id": job_id}), 200
 

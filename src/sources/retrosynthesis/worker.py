@@ -1,6 +1,8 @@
 from multiprocessing import Queue, Manager
 from multiprocessing.managers import DictProxy
 
+from sources.retrosynthesis.startup import make_config
+
 _manager = Manager()
 results = _manager.dict()
 queue = Queue()
@@ -27,12 +29,12 @@ def retrosynthesis_process(smiles, finder):
     solved_routes = solved_routes[0:10]
     solved_route_dict = {}
     for idx, route in enumerate(solved_routes, 1):
-        retro_route = RetroRoute(route['dict'])
+        retro_route = RetroRoute(route["dict"])
         retro_route.find_child_nodes2(retro_route.route_dict)
         route_dic = {
-            'score': route['all_score']['state score'],
-            'steps': retro_route.reactions,
-            'depth': route['node'].state.max_transforms,
+            "score": route["all_score"]["state score"],
+            "steps": retro_route.reactions,
+            "depth": route["node"].state.max_transforms,
         }
         solved_route_dict[f"Route {idx}"] = route_dic
     route_dicts = routes.dicts[0:10]
@@ -49,16 +51,23 @@ def worker(job_queue: Queue, results_dict: DictProxy):
         results_dict (DictProxy): The in-memory store for the results.
     """
     while True:
-        job_id, smiles, finder = job_queue.get()
+        job_id, smiles, enhancement, iteration_limit, max_transforms, time_limit = (
+            job_queue.get(False)
+        )
         try:
+            finder = make_config()
+            finder.config.search.algorithm_config["enhancement"] = enhancement
+            finder.config.search.iteration_limit = iteration_limit
+            finder.config.search.max_transforms = max_transforms
+            finder.config.search.time_limit = time_limit
             results_dict[job_id] = {"status": "running", "results": None}
             solved_route_dict, raw_routes = retrosynthesis_process(smiles, finder)
             results_dict[job_id] = {
-                "status": "done", 
+                "status": "done",
                 "results": {
-                    "solved_route_dict": solved_route_dict, 
-                    "raw_routes": raw_routes
-                }
+                    "solved_route_dict": solved_route_dict,
+                    "raw_routes": raw_routes,
+                },
             }
         except Exception as e:
-            results_dict[job_id] = {'status': 'error', 'error': str(e)}
+            results_dict[job_id] = {"status": "error", "error": str(e)}
