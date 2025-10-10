@@ -6,7 +6,7 @@ from flask import request, jsonify
 
 import sources.retrosynthesis.startup
 from sources import app
-from sources.retrosynthesis.worker import queue
+from sources.retrosynthesis.worker import queue, results
 
 # ACCESS_KEYS can be a comma-separated string of keys per client
 # e.g. client1-key,client2-key
@@ -45,6 +45,25 @@ def retrosynthesis():
 	queue.put((job_id, smiles, finder))
 
 	return jsonify({'job_id': job_id}), 200
+
+
+@app.route("/results/<job_id>")
+def get_results(job_id: str):
+	"""Get the results for a retrosynthesis job with the given ID.
+
+	Args:
+		job_id (str): The job ID to fetch the results for.
+
+	Returns:
+		Response: The results of the retrosynthesis job.
+	"""
+	if job_id not in results:
+		return jsonify({'error': 'job not found'}), 404
+	
+	if results[job_id]["status"] != "done":
+		return jsonify({"error": "job not finished"}), 404
+	
+	return jsonify(results.pop(job_id)), 200
 
 
 def retrosynthesis_process(smiles, finder):
