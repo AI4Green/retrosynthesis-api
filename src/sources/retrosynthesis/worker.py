@@ -52,7 +52,7 @@ def worker(job_queue: Queue, results_dict: DictProxy):
     """
     while True:
         job_id, smiles, enhancement, iteration_limit, max_transforms, time_limit = (
-            job_queue.get(False)
+            job_queue.get()
         )
         try:
             finder = make_config()
