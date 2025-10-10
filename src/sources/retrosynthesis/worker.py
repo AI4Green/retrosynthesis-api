@@ -1,10 +1,9 @@
-from multiprocessing import Process, Queue, Manager
+from multiprocessing import Queue, Manager
 from multiprocessing.managers import DictProxy
-import time, uuid, os
 
 _manager = Manager()
 results = _manager.dict()
-_queue = Queue()
+queue = Queue()
 
 
 def retrosynthesis_process(smiles, finder):
