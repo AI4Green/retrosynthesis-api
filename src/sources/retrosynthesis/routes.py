@@ -1,10 +1,12 @@
 import os
 import json
 import time
-from flask import request
+import uuid
+from flask import request, jsonify
 
 import sources.retrosynthesis.startup
 from sources import app
+from sources.retrosynthesis.worker import queue
 
 # ACCESS_KEYS can be a comma-separated string of keys per client
 # e.g. client1-key,client2-key
@@ -26,18 +28,23 @@ def retrosynthesis():
 		print("Invalid key")
 		return json.dumps({'Message': 'Invalid key', 'Timestamp': time.time()})
 
+	# Get job parameters
 	smiles = str(request.args.get('smiles'))
 	enhancement = str(request.args.get('enhancement', 'Default'))
+
 	finder = sources.retrosynthesis.startup.make_config()
 	finder.config.search.algorithm_config["enhancement"] = enhancement
 	finder.config.search.iteration_limit = int(request.args.get('iterations'))
 	finder.config.search.max_transforms = int(request.args.get('max_depth'))
 	finder.config.search.time_limit = int(request.args.get('time_limit'))
-	solved_route_dict_ls, raw_routes = retrosynthesis_process(smiles, finder)
-	page_data = {'Message': solved_route_dict_ls, 'Raw_Routes': raw_routes, 'Timestamp': time.time()}
 
-	json_dump = json.dumps(page_data)
-	return json_dump
+	# Create unique job ID
+	job_id = str(uuid.uuid4())
+
+	# Queue the analysis
+	queue.put((job_id, smiles, finder))
+
+	return jsonify({'job_id': job_id}), 200
 
 
 def retrosynthesis_process(smiles, finder):
