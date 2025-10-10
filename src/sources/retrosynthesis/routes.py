@@ -2,7 +2,7 @@ import os
 import json
 import time
 import uuid
-from flask import request, jsonify, current_app
+from flask import request, jsonify
 
 import sources.retrosynthesis.startup
 from sources import app
@@ -44,7 +44,6 @@ def retrosynthesis():
     job_id = str(uuid.uuid4())
 
     # Queue the analysis
-    current_app.logger.info(f"Queueing job {job_id}")
     queue.put(
         (job_id, smiles, enhancement, iteration_limit, max_transforms, time_limit)
     )
