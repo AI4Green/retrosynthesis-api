@@ -50,7 +50,7 @@ def retrosynthesis():
     return jsonify({"job_id": job_id}), 200
 
 
-@app.route("/results/<job_id>")
+@app.route("/results/<job_id>", methods=["GET"])
 def get_results(job_id: str):
     """Get the results for a retrosynthesis job with the given ID.
 
