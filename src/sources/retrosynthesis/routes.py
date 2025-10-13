@@ -60,6 +60,10 @@ def get_results(job_id: str):
     Returns:
         Response: The results of the retrosynthesis job.
     """
+    access_key = str(request.args.get("key"))
+    if access_key not in ACCESS_KEYS:
+        return jsonify({"status": "error", "error": "invalid key"}), 403
+
     if job_id not in results:
         return jsonify({"status": "error", "error": "job not found"}), 404
 
