@@ -30,8 +30,7 @@ def service_check():
 def retrosynthesis():
     access_key = str(request.args.get("key"))
     if access_key not in ACCESS_KEYS:
-        print("Invalid key")
-        return json.dumps({"Message": "Invalid key", "Timestamp": time.time()})
+        return jsonify({"status": "error", "error": "invalid key"}), 403
 
     # Get job parameters
     smiles = str(request.args.get("smiles"))
@@ -56,15 +55,12 @@ def get_results(job_id: str):
     """Get the results for a retrosynthesis job with the given ID.
 
     Args:
-            job_id (str): The job ID to fetch the results for.
+        job_id (str): The job ID to fetch the results for.
 
     Returns:
-            Response: The results of the retrosynthesis job.
+        Response: The results of the retrosynthesis job.
     """
     if job_id not in results:
-        return jsonify({"error": "job not found"}), 404
-
-    if results[job_id]["status"] != "done":
-        return jsonify({"error": "job not finished"}), 404
+        return jsonify({"status": "error", "error": "job not found"}), 404
 
     return jsonify(results.pop(job_id)), 200
