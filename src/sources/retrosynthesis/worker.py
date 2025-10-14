@@ -1,11 +1,16 @@
+import logging
 from multiprocessing import Queue, Manager
 from multiprocessing.managers import DictProxy
 
 from sources.retrosynthesis.startup import make_config
 
-_manager = Manager()
-results = _manager.dict()
-queue = Queue()
+
+def get_shared_objects():
+    """Create and return shared Manager dict and Queue."""
+    manager = Manager()
+    results = manager.dict()
+    queue = Queue()
+    return queue, results
 
 
 def retrosynthesis_process(smiles, finder):
@@ -50,6 +55,11 @@ def worker(job_queue: Queue, results_dict: DictProxy):
         job_queue (Queue): The queue of job parameters.
         results_dict (DictProxy): The in-memory store for the results.
     """
+    # Configure logging here for the sub-process
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(processName)s] %(levelname)s: %(message)s",
+    )
     while True:
         job_id, smiles, enhancement, iteration_limit, max_transforms, time_limit = (
             job_queue.get()

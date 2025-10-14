@@ -1,16 +1,21 @@
+from multiprocessing import Queue
 import os
 import json
 import time
+from typing import Optional
 import uuid
 from flask import request, jsonify
 
 import sources.retrosynthesis.startup
 from sources import app
-from sources.retrosynthesis.worker import queue, results
 
 # ACCESS_KEYS can be a comma-separated string of keys per client
 # e.g. client1-key,client2-key
 ACCESS_KEYS = os.getenv("KEYS", "retro_key").split(",")
+
+# These will be reset in app.py to what they need to be
+queue = Optional[Queue]
+results: Optional[dict] = None
 
 
 @app.route("/", methods=["GET"])
