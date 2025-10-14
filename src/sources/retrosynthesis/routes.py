@@ -67,4 +67,9 @@ def get_results(job_id: str):
     if job_id not in results:
         return jsonify({"status": "error", "error": "job not found"}), 404
 
+    if results[job_id]["status"] == "running":
+        # return job information without removing
+        return jsonify(results[job_id]), 200
+
+    # return job information by removing from results
     return jsonify(results.pop(job_id)), 200
