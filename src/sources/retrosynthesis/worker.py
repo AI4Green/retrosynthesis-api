@@ -1,0 +1,82 @@
+import logging
+from multiprocessing import Queue, Manager
+from multiprocessing.managers import DictProxy
+
+from sources.retrosynthesis.startup import make_config
+
+
+def get_shared_objects():
+    """Create and return shared Manager dict and Queue."""
+    manager = Manager()
+    results = manager.dict()
+    queue = Queue()
+    return queue, results
+
+
+def retrosynthesis_process(smiles, finder):
+    """
+    Takes a SMILES string and a pre-configured finder object and returns a list of retrosynthetic routes as dictionaries.
+    """
+
+    from rdkit import Chem
+    from aizynthfinder.interfaces import aizynthcli
+    from sources.retrosynthesis.classes import RetroRoute
+
+    mol = Chem.MolFromSmiles(smiles)
+    if not mol:
+        raise ValueError("Invalid SMILES string")
+    aizynthcli._process_single_smiles(smiles, finder, None, False, None, [], None)
+    routes = finder.routes
+    solved_routes = []
+    for idx, node in enumerate(routes.nodes):
+        if node.is_solved is True:
+            solved_routes.append(routes[idx])
+    solved_routes = solved_routes[0:10]
+    solved_route_dict = {}
+    for idx, route in enumerate(solved_routes, 1):
+        retro_route = RetroRoute(route["dict"])
+        retro_route.find_child_nodes2(retro_route.route_dict)
+        route_dic = {
+            "score": route["all_score"]["state score"],
+            "steps": retro_route.reactions,
+            "depth": route["node"].state.max_transforms,
+        }
+        solved_route_dict[f"Route {idx}"] = route_dic
+    route_dicts = routes.dicts[0:10]
+    raw_routes = [route_dict for route_dict in route_dicts]
+
+    return solved_route_dict, raw_routes
+
+
+def worker(job_queue: Queue, results_dict: DictProxy):
+    """Worker process for running retrosynthesis in the background.
+
+    Args:
+        job_queue (Queue): The queue of job parameters.
+        results_dict (DictProxy): The in-memory store for the results.
+    """
+    # Configure logging here for the sub-process
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(processName)s] %(levelname)s: %(message)s",
+    )
+    while True:
+        job_id, smiles, enhancement, iteration_limit, max_transforms, time_limit = (
+            job_queue.get()
+        )
+        try:
+            finder = make_config()
+            finder.config.search.algorithm_config["enhancement"] = enhancement
+            finder.config.search.iteration_limit = iteration_limit
+            finder.config.search.max_transforms = max_transforms
+            finder.config.search.time_limit = time_limit
+            solved_route_dict, raw_routes = retrosynthesis_process(smiles, finder)
+            results_dict[job_id] = {
+                "status": "done",
+                "results": {
+                    "solved_route_dict": solved_route_dict,
+                    "raw_routes": raw_routes,
+                },
+            }
+        except Exception as e:
+            results_dict[job_id] = {"status": "error", "error": str(e)}

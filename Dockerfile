@@ -8,4 +8,4 @@ RUN uv pip install .
 
 
 EXPOSE 8000
-CMD ["uv", "run", "python","src/app.py"]
+CMD ["python","src/app.py"]
