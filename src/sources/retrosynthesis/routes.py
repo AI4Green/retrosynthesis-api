@@ -14,7 +14,7 @@ from sources import app
 ACCESS_KEYS = os.getenv("KEYS", "retro_key").split(",")
 
 # These will be reset in app.py to what they need to be
-queue = Optional[Queue]
+queue: Optional[Queue] = None
 results: Optional[dict] = None
 
 
