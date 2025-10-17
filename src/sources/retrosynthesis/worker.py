@@ -70,7 +70,6 @@ def worker(job_queue: Queue, results_dict: DictProxy):
             finder.config.search.iteration_limit = iteration_limit
             finder.config.search.max_transforms = max_transforms
             finder.config.search.time_limit = time_limit
-            results_dict[job_id] = {"status": "running", "results": {}}
             solved_route_dict, raw_routes = retrosynthesis_process(smiles, finder)
             results_dict[job_id] = {
                 "status": "done",
