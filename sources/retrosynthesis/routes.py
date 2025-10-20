@@ -23,20 +23,28 @@ def service_check():
     return jsonify(page_data)
 
 
-@app.route("/retrosynthesis_api/", methods=["GET"])
+@app.route("/retrosynthesis_api/", methods=["GET", "POST"])
 def retrosynthesis():
-    access_key = str(request.args.get("key", ""))
+    if request.method == "POST":
+        payload     = request.get_json(silent=True) or {}
+        access_key  = str(payload.get("key", ""))
+        smiles      = str(payload.get("smiles", "")).strip()
+        enhancement = str(payload.get("enhancement", "Default"))
+        iterations  = int(payload.get("iterations", 100))
+        max_depth   = int(payload.get("max_depth", 7))
+        time_limit  = int(payload.get("time_limit", 60))
+    else:
+        access_key  = str(request.args.get("key", ""))
+        smiles      = str(request.args.get("smiles", "")).strip().replace(" ", "+")
+        enhancement = str(request.args.get("enhancement", "Default"))
+        iterations  = int(request.args.get("iterations", 100))
+        max_depth   = int(request.args.get("max_depth", 7))
+        time_limit  = int(request.args.get("time_limit", 60))
+
     if access_key != ACCESS_KEY:
         return jsonify({"Message": "Invalid key", "Timestamp": time.time()}), 401
-
-    smiles = str(request.args.get("smiles", "")).strip()
     if not smiles:
         return jsonify({"Message": "Missing 'smiles'", "Timestamp": time.time()}), 400
-
-    enhancement = str(request.args.get("enhancement", "Default"))
-    iterations = int(request.args.get("iterations", 100))
-    max_depth  = int(request.args.get("max_depth", 7))
-    time_limit = int(request.args.get("time_limit", 60))
 
     finder = sources.retrosynthesis.startup.make_config()
     finder.config.search.algorithm_config["enhancement"] = enhancement
@@ -45,12 +53,14 @@ def retrosynthesis():
     finder.config.search.time_limit      = time_limit
 
     solved_route_dict_ls, raw_routes = retrosynthesis_process(smiles, finder)
+
     page_data = {
         "Message": solved_route_dict_ls,
         "Raw_Routes": raw_routes,
         "Timestamp": time.time(),
     }
     return jsonify(page_data)
+
 
 
 def retrosynthesis_process(smiles, finder):
@@ -69,14 +79,12 @@ def retrosynthesis_process(smiles, finder):
         raise ValueError("Invalid SMILES string")
 
     aizynthcli._process_single_smiles(smiles, finder, None, False, None, [], None)
-
     routes = finder.routes
     solved_routes = []
     for idx, node in enumerate(routes.nodes):
         if node.is_solved is True:
             solved_routes.append(routes[idx])
 
-    solved_routes = solved_routes[0:10]
     solved_route_dict = {}
     for idx, route in enumerate(solved_routes, 1):
         retro_route = RetroRoute(route["dict"])
@@ -88,10 +96,37 @@ def retrosynthesis_process(smiles, finder):
         }
         solved_route_dict[f"Route {idx}"] = route_dic
 
-    route_dicts = routes.dicts[0:10]
+    route_dicts = routes.dicts
     raw_routes = [route_dict for route_dict in route_dicts]
 
     return solved_route_dict, raw_routes
+
+
+def _min_tree(n, is_mol_root=False):
+    """Minimize a route tree to the exact shape the converter expects.
+    - mol: keep type, smiles, and (first) child
+    - reaction: keep type and children
+    """
+    if not isinstance(n, dict):
+        return None
+    t = n.get("type")
+    if t == "mol":
+        out = {"type": "mol", "smiles": n.get("smiles", "")}
+        children = n.get("children", [])
+        if children:
+            c0 = _min_tree(children[0])
+            if c0 is not None:
+                out["children"] = [c0]
+        return out
+    if t == "reaction":
+        kids = []
+        for c in n.get("children", []):
+            k = _min_tree(c)
+            if k is not None:
+                kids.append(k)
+        return {"type": "reaction", "children": kids}
+    return None
+
 
 @app.route("/retrosynthesis_batch_progress/<batch_id>", methods=["GET"])
 def retrosynthesis_batch_progress(batch_id):
@@ -144,6 +179,20 @@ def retrosynthesis_batch():
     except Exception:
         BATCH_PROGRESS[batch_id].update({"status": "failed"})
         raise
+
+    min_trees = []
+    for item in results:
+        for r in item.get("raw_routes", []):
+            t = _min_tree(r)
+            if t and t.get("type") == "mol" and t.get("smiles"):
+                min_trees.append(t)
+
+    BATCH_OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_name = BATCH_OUT_DIR / "compact_routes.json"
+    tmp_path = out_name.with_suffix(".json.tmp")
+    with tmp_path.open("w", encoding="utf-8") as f:
+        json.dump(min_trees, f, ensure_ascii=False, indent=2)
+    tmp_path.replace(out_name)
 
     batch_entries = []
     for item in results:

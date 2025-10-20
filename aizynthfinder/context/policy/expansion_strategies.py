@@ -290,6 +290,12 @@ class TemplateBasedExpansionStrategy(ExpansionStrategy):
         self.rescale_prior: bool = bool(kwargs.get("rescale_prior", False))
         self.chiral_fingerprints = bool(kwargs.get("chiral_fingerprints", False))
 
+        self.grouping_mode = str(kwargs.get("grouping_mode", "auto")).lower()
+        self.group_per_group_k = int(kwargs.get("group_per_group_k", 2))
+        self.total_target_templates = int(kwargs.get("total_target_templates", 100))
+        self.min_group_score = float(kwargs.get("min_group_score", 0.15))
+        self.fixed_num_groups = int(kwargs.get("fixed_num_groups", 10))
+
         self._logger.info(
             f"Loading template-based expansion policy model from {source} to {self.key}"
         )
@@ -313,14 +319,14 @@ class TemplateBasedExpansionStrategy(ExpansionStrategy):
                 f"output dimensions of the model ({self.model.output_size})"
             )
         self._cache: Dict[str, Tuple[np.ndarray, np.ndarray]] = {}
-        self._cutoff_impl_name: str = str(kwargs.get("cutoff_impl", "templates")).lower()
-        self._cutoff_impl = getattr(self, f"_cutoff_predictions_{self._cutoff_impl_name}", None)
-        if self._cutoff_impl is None:
-            raise PolicyException(f"Unknown cutoff_impl='{self._cutoff_impl_name}'. Use 'templates' or 'groups'.")
+        # self._cutoff_impl_name: str = str(kwargs.get("cutoff_impl", "templates")).lower()
+        # self._cutoff_impl = getattr(self, f"_cutoff_predictions_{self._cutoff_impl_name}", None)
+        # if self._cutoff_impl is None:
+        #     raise PolicyException(f"Unknown cutoff_impl='{self._cutoff_impl_name}'. Use 'templates' or 'groups'.")
 
         self._group_index = None
-        if self._cutoff_impl_name == "groups":
-            self._build_group_index()
+        # if self._cutoff_impl_name == "groups":
+        #     self._build_group_index()
 
     def get_actions(
         self,
@@ -439,7 +445,6 @@ class TemplateBasedExpansionStrategy(ExpansionStrategy):
         cum = float(np.nansum(preds[selected]))
         print(f"[DEBUG cutoff:{tag}] selected {len(selected)} templates "
               f"(mass {cum:.6g} of {total:.6g}); showing top {topn}")
-        # order by prob descending
         order = np.argsort(preds[selected])[::-1]
         for rank, rel in enumerate(order[:topn], start=1):
             pos = int(selected[rel])
@@ -447,88 +452,156 @@ class TemplateBasedExpansionStrategy(ExpansionStrategy):
             print(f"  #{rank:>2}  p={p:.6g}  {self._dbg_row_info(pos)}")
 
     def _cutoff_predictions(self, predictions: np.ndarray) -> np.ndarray:
-        """
-        Select up to TOTAL_TARGET templates:
-          If GROUPING:
-            1) Rank groups by total probability; keep top NUM_GROUPS groups.
-            2) From each kept group, take PER_GROUP templates
-            3) Top up to TOTAL_TARGET with global best
-          Else:
-            Take global top TOTAL_TARGET templates.
-        """
-
-        # ----------------------------------
-        GROUPING = True
-        NUM_GROUPS = 20
-        PER_GROUP = 5
-        TOTAL_TARGET = 100
-        FILL_FROM_GLOBAL = True
-        # ----------------------------------
-
         preds = predictions.copy().astype(float)
-
         if getattr(self, "mask", None) is not None:
             preds[~self.mask] = 0.0
 
         all_idx = np.arange(preds.size, dtype=np.int32)
         global_order = all_idx[np.argsort(preds)[::-1]]
-        if not GROUPING:
-            return global_order[: min(TOTAL_TARGET, global_order.size)]
+        takeN = min(self.total_target_templates, global_order.size)
+
+        if self.grouping_mode not in ("auto", "fixed"):
+            return global_order[:takeN]
+
         if getattr(self, "_group_index", None) is None:
             self._build_group_index()
         gi = getattr(self, "_group_index", None)
-
-        if not gi or NUM_GROUPS <= 0 or PER_GROUP <= 0:
-            return global_order[: min(TOTAL_TARGET, global_order.size)]
+        if not gi:
+            return global_order[:takeN]
 
         group_items = list(gi.items())
-        group_sums = np.array(
-            [float(preds[np.asarray(members, dtype=np.int32)].sum()) for _, members in group_items],
-            dtype=float,
-        )
+        group_members = [np.asarray(members, dtype=np.int32) for _, members in group_items]
+        group_scores = np.array([float(preds[m].sum()) for m in group_members], dtype=float)
 
-        # Order groups by total mass
-        g_order = np.argsort(group_sums)[::-1]
+        order = np.argsort(group_scores)[::-1]
+        pre = order[: min(50, order.size)]
+
+        # print(f"[groups] top {len(pre)} group scores:")
+        # for i, gi_pos in enumerate(pre, start=1):
+            # print(f"  #{i:>2}  score={group_scores[gi_pos]:.6g}")
+
+        if self.grouping_mode == "fixed":
+            keep = [int(gi_pos) for gi_pos in order[: self.fixed_num_groups]]
+        else:
+            threshold = self.min_group_score
+            keep = [int(gi_pos) for gi_pos in pre if group_scores[gi_pos] >= threshold]
+
+        if len(keep) == 0:
+            return global_order[:takeN]
 
         selected: list[int] = []
+        chosen = set()
+        k = max(0, int(self.group_per_group_k))
 
-        # Take top NUM_GROUPS groups
-        for g_pos in g_order[: min(NUM_GROUPS, len(g_order))]:
-            _, members = group_items[g_pos]
-            members = np.asarray(members, dtype=np.int32)
-            if members.size == 0:
+        for gi_pos in keep:
+            members = group_members[gi_pos]
+            if members.size == 0 or k == 0:
                 continue
-
-            # Top PER_GROUP within this group
             local_sorted = members[np.argsort(preds[members])[::-1]]
-            take_k = int(min(PER_GROUP, local_sorted.size))
-
-            count = 0
-            for idx in local_sorted:
-                if count >= take_k:
+            take_k = min(k, int(local_sorted.size))
+            for x in local_sorted[:take_k]:
+                if len(selected) >= takeN:
                     break
-                if preds[idx] > 0.0:
-                    selected.append(int(idx))
-                    count += 1
-
-            if len(selected) >= TOTAL_TARGET:
+                xi = int(x)
+                if preds[xi] > 0.0 and xi not in chosen:
+                    selected.append(xi)
+                    chosen.add(xi)
+            if len(selected) >= takeN:
                 break
 
-        # Top up from global templates if needed
-        if FILL_FROM_GLOBAL and len(selected) < TOTAL_TARGET:
-            chosen = set(selected)
+        if len(selected) < takeN:
             for idx in global_order:
-                if len(selected) >= TOTAL_TARGET:
+                if len(selected) >= takeN:
                     break
-                if idx not in chosen and preds[idx] > 0.0:
-                    selected.append(int(idx))
+                xi = int(idx)
+                if preds[xi] > 0.0 and xi not in chosen:
+                    selected.append(xi)
 
-        if not selected:
-            return global_order[: min(TOTAL_TARGET, global_order.size)]
-        if len(selected) > TOTAL_TARGET:
-            selected = selected[:TOTAL_TARGET]
+        return np.asarray(selected[:takeN], dtype=np.int32)
 
-        return np.asarray(selected, dtype=np.int32)
+    # def _cutoff_predictions(self, predictions: np.ndarray) -> np.ndarray:
+    #     """
+    #     Select up to TOTAL_TARGET templates:
+    #       If GROUPING:
+    #         1) Rank groups by total probability; keep top NUM_GROUPS groups.
+    #         2) From each kept group, take PER_GROUP templates
+    #         3) Top up to TOTAL_TARGET with global best
+    #       Else:
+    #         Take global top TOTAL_TARGET templates.
+    #     """
+    #
+    #     # ----------------------------------
+    #     GROUPING = True
+    #     NUM_GROUPS = 10
+    #     PER_GROUP = 1
+    #     TOTAL_TARGET = 100
+    #     FILL_FROM_GLOBAL = True
+    #     # ----------------------------------
+    #
+    #     preds = predictions.copy().astype(float)
+    #
+    #     if getattr(self, "mask", None) is not None:
+    #         preds[~self.mask] = 0.0
+    #
+    #     all_idx = np.arange(preds.size, dtype=np.int32)
+    #     global_order = all_idx[np.argsort(preds)[::-1]]
+    #     if not GROUPING:
+    #         return global_order[: min(TOTAL_TARGET, global_order.size)]
+    #     if getattr(self, "_group_index", None) is None:
+    #         self._build_group_index()
+    #     gi = getattr(self, "_group_index", None)
+    #
+    #     if not gi or NUM_GROUPS <= 0 or PER_GROUP <= 0:
+    #         return global_order[: min(TOTAL_TARGET, global_order.size)]
+    #
+    #     group_items = list(gi.items())
+    #     group_sums = np.array(
+    #         [float(preds[np.asarray(members, dtype=np.int32)].sum()) for _, members in group_items],
+    #         dtype=float,
+    #     )
+    #
+    #     # Order groups by total mass
+    #     g_order = np.argsort(group_sums)[::-1]
+    #
+    #     selected: list[int] = []
+    #
+    #     # Take top NUM_GROUPS groups
+    #     for g_pos in g_order[: min(NUM_GROUPS, len(g_order))]:
+    #         _, members = group_items[g_pos]
+    #         members = np.asarray(members, dtype=np.int32)
+    #         if members.size == 0:
+    #             continue
+    #
+    #         # Top PER_GROUP within this group
+    #         local_sorted = members[np.argsort(preds[members])[::-1]]
+    #         take_k = int(min(PER_GROUP, local_sorted.size))
+    #
+    #         count = 0
+    #         for idx in local_sorted:
+    #             if count >= take_k:
+    #                 break
+    #             if preds[idx] > 0.0:
+    #                 selected.append(int(idx))
+    #                 count += 1
+    #
+    #         if len(selected) >= TOTAL_TARGET:
+    #             break
+    #
+    #     # Top up from global templates if needed
+    #     if FILL_FROM_GLOBAL and len(selected) < TOTAL_TARGET:
+    #         chosen = set(selected)
+    #         for idx in global_order:
+    #             if len(selected) >= TOTAL_TARGET:
+    #                 break
+    #             if idx not in chosen and preds[idx] > 0.0:
+    #                 selected.append(int(idx))
+    #
+    #     if not selected:
+    #         return global_order[: min(TOTAL_TARGET, global_order.size)]
+    #     if len(selected) > TOTAL_TARGET:
+    #         selected = selected[:TOTAL_TARGET]
+    #
+    #     return np.asarray(selected, dtype=np.int32)
 
     def _cutoff_predictions_templates(self, predictions: np.ndarray) -> np.ndarray:
         """

@@ -24,7 +24,7 @@ def make_config():
             'full': {
                 'type': 'template-based',
                 'model': os.path.join(BASEDIR, 'config_files', 'uspto_model.onnx'),
-                'template': os.path.join(BASEDIR, 'config_files', 'uspto_templates.csv.gz')
+                'template': os.path.join(BASEDIR, 'config_files', 'uspto_templates_grouped.csv.gz')
             }
         },
 
