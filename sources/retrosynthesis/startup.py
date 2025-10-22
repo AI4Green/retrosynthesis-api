@@ -30,7 +30,7 @@ def make_config():
 
         'stock': {
             'zinc': os.path.join(BASEDIR, 'config_files', 'zinc_stock_17_04_20.hdf5'),
-            'overlay': os.path.join(BASEDIR, 'config_files', 'stock_additions_2025_08.hdf5'),
+            #'overlay': os.path.join(BASEDIR, 'config_files', 'stock_additions_2025_08.hdf5'),
             'alcohols': os.path.join(BASEDIR, 'config_files', 'dummy_alcohols.hdf5'),
             'naturals': os.path.join(BASEDIR, 'config_files', 'np_08_25.hdf5'),
             'non_iso_naturals': os.path.join(BASEDIR, 'config_files', 'ninp_08_25.hdf5'),
