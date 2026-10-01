@@ -31,7 +31,7 @@ def retrosynthesis_process(smiles, finder):
     for idx, node in enumerate(routes.nodes):
         if node.is_solved is True:
             solved_routes.append(routes[idx])
-    solved_routes = solved_routes[0:25]
+    solved_routes = solved_routes[0:10]
     solved_route_dict = {}
     for idx, route in enumerate(solved_routes, 1):
         retro_route = RetroRoute(route["dict"])
@@ -42,7 +42,7 @@ def retrosynthesis_process(smiles, finder):
             "depth": route["node"].state.max_transforms,
         }
         solved_route_dict[f"Route {idx}"] = route_dic
-    route_dicts = routes.dicts[0:25]
+    route_dicts = routes.dicts[0:10]
     raw_routes = [route_dict for route_dict in route_dicts]
 
     return solved_route_dict, raw_routes
