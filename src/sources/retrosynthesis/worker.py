@@ -61,11 +61,38 @@ def worker(job_queue: Queue, results_dict: DictProxy):
         format="%(asctime)s [%(processName)s] %(levelname)s: %(message)s",
     )
     while True:
-        job_id, smiles, enhancement, iteration_limit, max_transforms, time_limit = (
-            job_queue.get()
-        )
+        (
+            job_id,
+            smiles,
+            enhancement,
+            stocks,
+            iteration_limit,
+            max_transforms,
+            time_limit,
+        ) = job_queue.get()
+
         try:
             finder = make_config()
+
+            stock_mapping = {
+                "zinc": ["zinc"],
+                "paroutes": ["paroutes_n1", "paroutes_n5"],
+                "askcos": ["askcos_stock"],
+                "naturals": ["naturals", "non_iso_naturals"],
+                "simples": ["simple", "alcohols"],
+            }
+
+            selected_stocks = []
+
+            if "all" in stocks:
+                for stock_group in stock_mapping.values():
+                    selected_stocks.extend(stock_group)
+            else:
+                for stock in stocks:
+                    selected_stocks.extend(stock_mapping[stock])
+
+            finder.stock.select(selected_stocks)
+
             finder.config.search.algorithm_config["enhancement"] = enhancement
             finder.config.search.iteration_limit = iteration_limit
             finder.config.search.max_transforms = max_transforms

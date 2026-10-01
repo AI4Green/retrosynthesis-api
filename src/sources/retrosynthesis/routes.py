@@ -40,6 +40,7 @@ def retrosynthesis():
     # Get job parameters
     smiles = str(request.args.get("smiles"))
     enhancement = str(request.args.get("enhancement", "Default"))
+    stocks = str(request.args.get("stocks", "all")).split(",")
     iteration_limit = int(request.args.get("iterations"))
     max_transforms = int(request.args.get("max_depth"))
     time_limit = int(request.args.get("time_limit"))
@@ -49,7 +50,15 @@ def retrosynthesis():
 
     # Queue the analysis
     queue.put(
-        (job_id, smiles, enhancement, iteration_limit, max_transforms, time_limit)
+        (
+            job_id,
+            smiles,
+            enhancement,
+            stocks,
+            iteration_limit,
+            max_transforms,
+            time_limit,
+        )
     )
 
     # It takes a long time for the job to appear in results, making it look
