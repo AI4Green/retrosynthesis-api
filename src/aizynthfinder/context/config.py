@@ -35,7 +35,7 @@ class _SearchConfiguration:
         default_factory=lambda: {
             "C": 1.4,
             "default_prior": 0.5,
-            "use_prior": False,
+            "use_prior": True,
             "prune_cycles_in_search": True,
             "search_rewards": ["state score"],
             "immediate_instantiation": (),
