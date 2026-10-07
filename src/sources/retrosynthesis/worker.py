@@ -13,11 +13,17 @@ def get_shared_objects():
     return queue, results
 
 
+def update_stage(results_dict, job_id, stage):
+    """Updates the current stage of retrosynthesis process for progress bar."""
+    job = dict(results_dict[job_id])
+    job["stage"] = stage
+    results_dict[job_id] = job
+
+
 def retrosynthesis_process(smiles, finder):
     """
     Takes a SMILES string and a pre-configured finder object and returns a list of retrosynthetic routes as dictionaries.
     """
-
     from rdkit import Chem
     from aizynthfinder.interfaces import aizynthcli
     from sources.retrosynthesis.classes import RetroRoute
@@ -25,7 +31,17 @@ def retrosynthesis_process(smiles, finder):
     mol = Chem.MolFromSmiles(smiles)
     if not mol:
         raise ValueError("Invalid SMILES string")
-    aizynthcli._process_single_smiles(smiles, finder, None, False, None, [], None)
+
+    aizynthcli._process_single_smiles(
+        smiles,
+        finder,
+        None,
+        False,
+        None,
+        [],
+        None,
+    )
+
     routes = finder.routes
     solved_routes = []
     for idx, node in enumerate(routes.nodes):
@@ -55,7 +71,6 @@ def worker(job_queue: Queue, results_dict: DictProxy):
         job_queue (Queue): The queue of job parameters.
         results_dict (DictProxy): The in-memory store for the results.
     """
-    # Configure logging here for the sub-process
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(processName)s] %(levelname)s: %(message)s",
@@ -97,9 +112,12 @@ def worker(job_queue: Queue, results_dict: DictProxy):
             finder.config.search.iteration_limit = iteration_limit
             finder.config.search.max_transforms = max_transforms
             finder.config.search.time_limit = time_limit
-            solved_route_dict, raw_routes = retrosynthesis_process(smiles, finder)
+
+            update_stage(results_dict, job_id, "running_retrosynthesis",)
+            solved_route_dict, raw_routes = retrosynthesis_process(smiles, finder,)
             results_dict[job_id] = {
                 "status": "done",
+                "stage": "retrosynthesis_complete",
                 "results": {
                     "solved_route_dict": solved_route_dict,
                     "raw_routes": raw_routes,
