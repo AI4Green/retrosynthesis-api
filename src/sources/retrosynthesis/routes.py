@@ -48,6 +48,9 @@ def retrosynthesis():
     # Create unique job ID
     job_id = str(uuid.uuid4())
 
+    results[job_id] = {"status": "running",
+                       "stage": "obtaining_resources",
+                       "results": {}}
     # Queue the analysis
     queue.put(
         (
@@ -63,7 +66,6 @@ def retrosynthesis():
 
     # It takes a long time for the job to appear in results, making it look
     # like an error in the UI. So add the entry here to get ahead
-    results[job_id] = {"status": "running", "results": {}}
 
     return jsonify({"job_id": job_id}), 200
 
